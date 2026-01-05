@@ -14,9 +14,9 @@ bl_info = {
     "name": "BlenderForge",
     "blender": (4, 0),
     "category": "Object",
-    "version": (6, 0, 0),
+    "version": (7, 0, 0),
     "author": "usexless",
-    "description": "AI with profile-based shaders (PBR/Toon/Unlit) for Unity-ready assets",
+    "description": "AI with multi-map textures and PBR/Toon/Unlit shaders for Unity",
 }
 
 # =============================================================================
@@ -75,6 +75,12 @@ class ForgePreferences(bpy.types.AddonPreferences):
         default=True
     )
     
+    hq_mode: bpy.props.BoolProperty(
+        name="HQ Mode (Multi-Map)",
+        description="Generate full texture set (Roughness, Normal, AO) - uses more API calls",
+        default=False
+    )
+    
     def draw(self, context):
         layout = self.layout
         layout.prop(self, "api_key")
@@ -82,6 +88,7 @@ class ForgePreferences(bpy.types.AddonPreferences):
         layout.prop(self, "auto_execute")
         layout.prop(self, "texture_size")
         layout.prop(self, "auto_apply")
+        layout.prop(self, "hq_mode")
         layout.separator()
         layout.label(text=f"Status: {_status}")
 
@@ -105,6 +112,10 @@ def get_texture_size():
 def is_auto_apply():
     p = bpy.context.preferences.addons.get(__name__)
     return p.preferences.auto_apply if p else True
+
+def is_hq_mode():
+    p = bpy.context.preferences.addons.get(__name__)
+    return p.preferences.hq_mode if p else False
 
 def model_name():
     m = get_model()
@@ -490,6 +501,93 @@ def generate_texture(prompt, size="2K"):
             msg = str(e)
         set_status(f"❌ Texture error", msg[:30])
         raise Exception(msg[:100])
+
+
+def generate_texture_set(base_prompt, profile, obj_name="texture"):
+    """Generate complete texture set based on profile maps setting."""
+    maps = profile.get('maps', ['base_color'])
+    size = profile.get('resolution', '2K')
+    texture_set = {}
+    
+    # Always generate base color
+    set_status("🎨 1/? BaseColor", obj_name)
+    base_prompt_full = f"{base_prompt}, albedo color map, no shadows, even lighting"
+    path, _ = generate_texture(base_prompt_full, size)
+    if path:
+        texture_set['base_color'] = path
+    else:
+        return texture_set  # Can't continue without base
+    
+    # Generate roughness if enabled
+    if 'roughness' in maps and not _stop_requested:
+        set_status("🎨 2/? Roughness", obj_name)
+        rough_prompt = f"Roughness/smoothness map for {base_prompt}, grayscale, white=rough black=smooth, no color"
+        try:
+            rough_path, _ = generate_texture(rough_prompt, size)
+            if rough_path:
+                texture_set['roughness'] = rough_path
+        except:
+            pass  # Continue without roughness
+    
+    # Generate normal if enabled
+    if 'normal' in maps and not _stop_requested:
+        set_status("🎨 3/? Normal", obj_name)
+        normal_prompt = f"Normal map for {base_prompt}, purple-blue tangent space normal map, surface detail bumps"
+        try:
+            normal_path, _ = generate_texture(normal_prompt, size)
+            if normal_path:
+                texture_set['normal'] = normal_path
+        except:
+            pass  # Continue without normal
+    
+    # Generate AO if enabled
+    if 'ao' in maps and not _stop_requested:
+        set_status("🎨 4/? AO", obj_name)
+        ao_prompt = f"Ambient occlusion map for {base_prompt}, grayscale, dark in crevices white on exposed surfaces"
+        try:
+            ao_path, _ = generate_texture(ao_prompt, size)
+            if ao_path:
+                texture_set['ao'] = ao_path
+        except:
+            pass
+    
+    log_action(f"[TEXSET] {len(texture_set)} maps for {obj_name}")
+    return texture_set
+
+
+def apply_texture_set_to_object(obj, texture_set, profile=None):
+    """Apply complete texture set with appropriate shader."""
+    if profile is None:
+        try:
+            profile = get_project_profile(bpy.context.scene)
+        except:
+            profile = DEFAULT_PROFILE
+    
+    shading = profile.get('shading', 'pbr')
+    base_path = texture_set.get('base_color')
+    
+    if not base_path:
+        return False
+    
+    # Select shader based on profile
+    if shading == 'toon':
+        mat = create_toon_material(obj, base_path)
+    elif shading == 'unlit':
+        mat = create_unlit_material(obj, base_path)
+    else:  # PBR with full maps
+        rough_path = texture_set.get('roughness')
+        normal_path = texture_set.get('normal')
+        mat = create_pbr_material(obj, base_path, rough_path, normal_path)
+    
+    # Apply material
+    if obj.data.materials:
+        obj.data.materials[0] = mat
+    else:
+        obj.data.materials.append(mat)
+    
+    map_count = len(texture_set)
+    log_action(f"[SHADER] {shading.upper()} ({map_count} maps) → {obj.name}")
+    return True
 
 
 # =============================================================================
@@ -1001,10 +1099,12 @@ class FORGE_PT_texture(bpy.types.Panel):
         box = layout.box()
         box.label(text="Auto-Texture:", icon='BRUSH_DATA')
         
-        # Auto-apply toggle
+        # Mode toggles
         p = bpy.context.preferences.addons.get(__name__)
         if p:
-            box.prop(p.preferences, "auto_apply", text="Auto-Apply to Selected")
+            row = box.row()
+            row.prop(p.preferences, "auto_apply", text="Auto-Apply")
+            row.prop(p.preferences, "hq_mode", text="HQ Mode")
         
         col = box.column(align=True)
         col.enabled = not scene.forge_loading
@@ -1328,6 +1428,8 @@ class FORGE_OT_apply_texture(bpy.types.Operator):
 class FORGE_OT_auto_texture(bpy.types.Operator):
     bl_idname = "forge.auto_texture"
     bl_label = "Auto"
+    bl_description = "Generate texture for selected object using profile"
+    
     def execute(self, context):
         global _stop_requested
         _stop_requested = False
@@ -1340,22 +1442,41 @@ class FORGE_OT_auto_texture(bpy.types.Operator):
         scene = context.scene
         scene.forge_loading = True
         
-        # Use profile-based prompt
+        # Use profile-based settings
         profile = get_project_profile(scene)
         prompt = get_texture_prompt_for_profile(obj, profile)
-        size = profile.get('resolution', get_texture_size())
+        use_hq = is_hq_mode()
         
         def gen():
             try:
-                path, _ = generate_texture(prompt, size)
-                def done():
-                    if path: apply_texture_to_object(obj, path)
-                    scene.forge_loading = False
-                    scene.forge_texture_result = f"✅ {obj.name}" if path else "Failed"
-                    for a in bpy.context.screen.areas:
-                        if a.type == 'VIEW_3D': a.tag_redraw()
-                    return None
-                bpy.app.timers.register(done, first_interval=0.1)
+                if use_hq:
+                    # HQ Mode: Generate full texture set
+                    texture_set = generate_texture_set(prompt, profile, obj.name)
+                    def done():
+                        if texture_set:
+                            apply_texture_set_to_object(obj, texture_set, profile)
+                            map_count = len(texture_set)
+                            scene.forge_texture_result = f"✅ {obj.name} ({map_count} maps)"
+                        else:
+                            scene.forge_texture_result = "Failed"
+                        scene.forge_loading = False
+                        for a in bpy.context.screen.areas:
+                            if a.type == 'VIEW_3D': a.tag_redraw()
+                        return None
+                    bpy.app.timers.register(done, first_interval=0.1)
+                else:
+                    # Fast Mode: Single texture
+                    size = profile.get('resolution', get_texture_size())
+                    path, _ = generate_texture(prompt, size)
+                    def done():
+                        if path: 
+                            apply_texture_to_object(obj, path, profile)
+                        scene.forge_loading = False
+                        scene.forge_texture_result = f"✅ {obj.name}" if path else "Failed"
+                        for a in bpy.context.screen.areas:
+                            if a.type == 'VIEW_3D': a.tag_redraw()
+                        return None
+                    bpy.app.timers.register(done, first_interval=0.1)
             except Exception as e:
                 def err():
                     scene.forge_loading = False

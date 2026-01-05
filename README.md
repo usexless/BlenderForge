@@ -1,8 +1,8 @@
 # BlenderForge
 
-**AI with profile-based shaders for Unity-ready 3D assets**
+**AI with multi-map textures and PBR/Toon/Unlit shaders for Unity**
 
-![Version](https://img.shields.io/badge/version-6.0.0-blue)
+![Version](https://img.shields.io/badge/version-7.0.0-blue)
 ![Blender](https://img.shields.io/badge/blender-4.0+-orange)
 
 ## ✨ Features
@@ -10,9 +10,9 @@
 | Feature | Description |
 |---------|-------------|
 | 🎯 **Profile System** | Auto-infers style from description |
-| 🎨 **Shader Factory** | PBR, Toon, Unlit materials |
+| 🎨 **Multi-Map HQ** | BaseColor + Roughness + Normal + AO |
+| 🎭 **Shader Factory** | PBR, Toon, Unlit materials |
 | 🤖 **Autonomous Mode** | Auto-executes code |
-| 📁 **Project Context** | Per .blend file |
 
 ## 📦 Install
 
@@ -23,27 +23,28 @@
 ## 🚀 Usage
 
 ### 1. Set Description
-Examples:
-- "PS1-style horror game" → lowpoly/retro
-- "Stylized mobile RPG" → toon/unlit
-- "AAA realistic shooter" → pbr
+`"PS1-style horror game"` → Profile: lowpoly/retro
 
 ### 2. Analyze
-Click **Analyze** → Profile extracts style/shading
+Click **Analyze** → Extracts style/platform/maps
 
 ### 3. Auto-Texture
-Generates texture + applies matching shader:
-- **PBR**: Principled + Roughness + Normal
-- **Toon**: Diffuse → ShaderToRGB → ColorRamp
-- **Unlit**: Emission (mobile/UI)
+- **Fast Mode**: Single BaseColor texture
+- **HQ Mode**: Full PBR set (3-4 API calls)
 
-## 🎭 Shader Types
+## 🎭 Modes
 
-| Profile Shading | Blender Shader |
-|-----------------|----------------|
-| `pbr` | Principled BSDF |
-| `toon` | Cel-shading with ColorRamp |
-| `unlit` | Emission only |
+| Mode | Maps Generated | API Calls |
+|------|----------------|-----------|
+| Fast | BaseColor | 1 |
+| HQ | Base + Rough + Normal | 3 |
+| HQ+AO | Base + Rough + Normal + AO | 4 |
+
+## 🔧 Preferences
+
+- **HQ Mode**: Toggle multi-map generation
+- **Auto-Apply**: Apply to selected object
+- **Texture Size**: 1K / 2K / 4K
 
 ---
 *Powered by Google Gemini 3*
