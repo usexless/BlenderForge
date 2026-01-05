@@ -14,7 +14,7 @@ bl_info = {
     "name": "BlenderForge",
     "blender": (4, 0),
     "category": "Object",
-    "version": (3, 0, 0),
+    "version": (4, 0, 0),
     "author": "usexless",
     "description": "Autonomous AI assistant with texture generation for Unity-ready 3D assets",
 }
@@ -69,12 +69,19 @@ class ForgePreferences(bpy.types.AddonPreferences):
         default='2K'
     )
     
+    auto_apply: bpy.props.BoolProperty(
+        name="Auto-Apply Textures",
+        description="Automatically apply generated textures to selected object",
+        default=True
+    )
+    
     def draw(self, context):
         layout = self.layout
         layout.prop(self, "api_key")
         layout.prop(self, "model")
         layout.prop(self, "auto_execute")
         layout.prop(self, "texture_size")
+        layout.prop(self, "auto_apply")
         layout.separator()
         layout.label(text=f"Status: {_status}")
 
@@ -94,6 +101,10 @@ def is_auto():
 def get_texture_size():
     p = bpy.context.preferences.addons.get(__name__)
     return p.preferences.texture_size if p else "2K"
+
+def is_auto_apply():
+    p = bpy.context.preferences.addons.get(__name__)
+    return p.preferences.auto_apply if p else True
 
 def model_name():
     m = get_model()
@@ -378,25 +389,48 @@ def apply_texture_to_object(obj, image_path):
 
 
 def generate_auto_texture_prompt(obj):
+    """Generate texture prompt based on object name and project context."""
     name = obj.name.lower()
     
-    # Get project description for context
+    # Get project description for style context
     try:
         desc = bpy.context.scene.forge_project_desc
-        style = f" in style: {desc}" if desc else ""
+        style = f", style: {desc}" if desc else ""
     except:
         style = ""
     
-    if any(x in name for x in ['wall', 'floor', 'ground']):
-        return f"Seamless tileable {name} texture, PBR{style}"
-    elif any(x in name for x in ['wood', 'plank']):
-        return f"Seamless tileable wood texture, PBR{style}"
-    elif any(x in name for x in ['metal', 'steel']):
-        return f"Seamless brushed metal texture, PBR{style}"
-    elif any(x in name for x in ['stone', 'rock', 'brick']):
-        return f"Seamless {name} texture, PBR{style}"
+    # Build context-aware prompt
+    base = "Seamless tileable PBR texture"
+    
+    if any(x in name for x in ['wall', 'floor', 'ground', 'terrain']):
+        return f"{base}, {name} surface{style}"
+    elif any(x in name for x in ['wood', 'plank', 'board', 'log']):
+        return f"{base}, natural wood grain{style}"
+    elif any(x in name for x in ['metal', 'steel', 'iron', 'chrome']):
+        return f"{base}, brushed metal industrial{style}"
+    elif any(x in name for x in ['stone', 'rock', 'brick', 'concrete']):
+        return f"{base}, {name} realistic weathered{style}"
+    elif any(x in name for x in ['fabric', 'cloth', 'leather', 'carpet']):
+        return f"{base}, {name} material{style}"
+    elif any(x in name for x in ['skin', 'body', 'face', 'character']):
+        return f"Realistic skin texture, subtle pores, natural tones{style}"
+    elif any(x in name for x in ['glass', 'window']):
+        return f"{base}, frosted glass with subtle reflections{style}"
+    elif any(x in name for x in ['grass', 'leaf', 'plant', 'tree']):
+        return f"{base}, organic natural {name}{style}"
     else:
-        return f"Seamless texture for {obj.name}, PBR game-ready{style}"
+        return f"{base} for {obj.name}, game-ready{style}"
+
+
+def get_selected_object_context():
+    """Get info about currently selected object for texture generation."""
+    try:
+        obj = bpy.context.active_object
+        if obj and obj.type == 'MESH':
+            return f"For object: {obj.name}"
+    except:
+        pass
+    return ""
 
 
 # =============================================================================
@@ -425,19 +459,25 @@ def get_system():
     project_ctx = get_project_context()
     project_section = f"\n\nPROJECT CONTEXT\n{project_ctx}" if project_ctx else ""
     
-    return f'''You are "BlenderForge AI", expert Blender {v} assistant for UNITY-READY 3D assets.{project_section}
+    return f'''You are "BlenderForge", expert Blender {v} assistant for UNITY-READY 3D assets.{project_section}
 
 RULES
 1) Python code in one ```python block only
 2) Max 3 bullet points outside code
-3) Meters, Z-up, clean transforms
+3) Meters, Z-up, clean transforms (apply scale)
 4) Bone names: .L/.R suffix
 5) HUMANOID: hips/spine/chest/neck/head/upperArm.L etc.
 6) GENERIC: custom skeleton for non-humanoids
 7) IF AMBIGUOUS: Ask "Humanoid or Generic?" - no code
 8) Attachment gaps ≤ 0.01m, validate & fix
 9) Edit bones in Edit Mode only
-10) Build on previous actions from project context'''
+10) Build on previous actions from project context
+
+OBJECT ORGANIZATION (CRITICAL)
+11) Always name objects descriptively: "Character_Body", "Sword_Blade", "Tree_Trunk"
+12) Group related objects using Collections or parent Empty
+13) Use naming pattern: [Category]_[Part] (e.g. "Vehicle_Wheel.L")
+14) After creating objects, print summary: names, hierarchy, vertex counts'''
 
 
 # =============================================================================
@@ -676,6 +716,11 @@ class FORGE_PT_texture(bpy.types.Panel):
         box = layout.box()
         box.label(text="Auto-Texture:", icon='BRUSH_DATA')
         
+        # Auto-apply toggle
+        p = bpy.context.preferences.addons.get(__name__)
+        if p:
+            box.prop(p.preferences, "auto_apply", text="Auto-Apply to Selected")
+        
         col = box.column(align=True)
         col.enabled = not scene.forge_loading
         col.operator("forge.auto_texture", text="Selected Object", icon='OBJECT_DATA')
@@ -892,6 +937,12 @@ class FORGE_OT_gen_texture(bpy.types.Operator):
             bpy.ops.forge.prefs()
             return {'CANCELLED'}
         
+        # Add object context to prompt if object selected
+        obj = context.active_object
+        obj_context = get_selected_object_context()
+        if obj_context:
+            prompt = f"{prompt}. {obj_context}"
+        
         scene.forge_loading = True
         scene.forge_texture_result = ""
         size = get_texture_size()
@@ -901,7 +952,14 @@ class FORGE_OT_gen_texture(bpy.types.Operator):
                 path, _ = generate_texture(prompt, size)
                 def done():
                     scene.forge_loading = False
-                    scene.forge_texture_result = f"✅ {os.path.basename(path)}" if path else "No image"
+                    if path:
+                        scene.forge_texture_result = f"✅ {os.path.basename(path)}"
+                        # Auto-apply if enabled and object selected
+                        if is_auto_apply() and obj and obj.type == 'MESH':
+                            apply_texture_to_object(obj, path)
+                            scene.forge_texture_result += f" → {obj.name}"
+                    else:
+                        scene.forge_texture_result = "No image"
                     for a in bpy.context.screen.areas:
                         if a.type == 'VIEW_3D': a.tag_redraw()
                     return None

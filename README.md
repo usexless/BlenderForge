@@ -2,7 +2,7 @@
 
 **Autonomous AI assistant for Unity-ready 3D assets in Blender**
 
-![Version](https://img.shields.io/badge/version-3.0.0-blue)
+![Version](https://img.shields.io/badge/version-4.0.0-blue)
 ![Blender](https://img.shields.io/badge/blender-4.0+-orange)
 
 ## ✨ Features
@@ -10,10 +10,10 @@
 | Feature | Description |
 |---------|-------------|
 | 🤖 **Autonomous Mode** | Auto-executes generated code |
-| 🎨 **Texture Generation** | AI textures with Nano Banana Pro |
-| 📋 **Project Context** | Stored per .blend file |
-| ⏪ **History Navigation** | Step back/forward through AI responses |
-| ⚡ **Gemini 3 Flash/Pro** | Latest AI models |
+| 🎨 **Texture Generation** | AI textures with auto-apply |
+| 📁 **Project Context** | Stored per .blend file |
+| ⏪ **History Navigation** | Step back/forward |
+| 🏷️ **Smart Naming** | Auto groups & names objects |
 
 ## 📦 Install
 
@@ -23,30 +23,22 @@
 
 ## 🚀 Usage
 
+### Code AI
 1. Press **N** → **Forge** tab
-2. Enter project description (shared context)
-3. Type request → **Send**
-4. 🤖 Autonomous mode runs code automatically
+2. Fill project description (shared context)
+3. Type task → **Send**
 
-### Texture Generation
-
-1. Open **🎨 Textures** panel
-2. Enter prompt or use **Auto Selected/ALL**
-3. Apply to objects
+### Textures
+1. Select object in viewport
+2. Enter texture prompt or use **Auto-Texture**
+3. Auto-apply creates & assigns material
 
 ## 🎮 Unity-Ready
 
 - Humanoid/Generic rig detection
 - Clean bone naming (.L/.R)
-- Spatial validation (≤0.01m gaps)
-- Deform skeleton only
-
-## 📊 Models
-
-| Model | Speed | Use Case |
-|-------|-------|----------|
-| ⚡ Flash | Fast | General tasks |
-| 🧠 Pro | Smart | Complex builds |
+- Object grouping & naming: `[Category]_[Part]`
+- Spatial validation
 
 ---
 *Powered by Google Gemini 3*
