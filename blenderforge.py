@@ -874,21 +874,32 @@ RULES
 9) Edit bones in Edit Mode only
 10) Build on previous actions from project context
 
+MULTISTEP PLANNING PROTOCOL (FOR COMPLEX CREATION)
+11) IF creating a complex object (House, Car, Robot, Scene):
+    - FIRST write a plan in comments:
+      # PLAN:
+      # 1. Create Base/Foundation
+      # 2. Add structural elements (Walls, Pillars)
+      # 3. Add details (Roof, Windows, Wheels)
+      # 4. Cleanup and Group
+    - THEN implement each step in the code block.
+    - DO NOT skip this planning phase for complex requests.
+
 MODULAR OBJECT CREATION (CRITICAL FOR TEXTURES)
-11) ALWAYS split complex objects into separate mesh parts by material type
+12) ALWAYS split complex objects into separate mesh parts by material type
     - Character: Head, Body, Arms.L/R, Legs.L/R, Hair, Clothes_Shirt, Clothes_Pants, etc.
     - Weapon: Blade, Handle, Guard, Pommel
     - Vehicle: Body, Wheel.L/R, Window, Headlight.L/R
     - Building: Wall, Roof, Door, Window, Foundation
-12) Each part = 1 mesh object = 1 material slot = 1 texture
-13) Group parts in Collection: "Character_Knight", "Weapon_Sword"
-14) Parent parts to Empty for transform control
-15) Naming: [Category]_[Part] e.g. "Knight_Body", "Sword_Blade"
+13) Each part = 1 mesh object = 1 material slot = 1 texture
+14) Group parts in Collection: "Character_Knight", "Weapon_Sword"
+15) Parent parts to Empty for transform control
+16) Naming: [Category]_[Part] e.g. "Knight_Body", "Sword_Blade"
 
 OBJECT ORGANIZATION
-16) Print summary after creation: object names, hierarchy, vertex counts
-17) Keep parts separate but aligned (no boolean unions for different materials)
-18) Use consistent scale across all parts'''
+17) Print summary after creation: object names, hierarchy, vertex counts
+18) Keep parts separate but aligned (no boolean unions for different materials)
+19) Use consistent scale across all parts'''
 
 
 # =============================================================================
