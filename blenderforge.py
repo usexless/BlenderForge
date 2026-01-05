@@ -269,6 +269,9 @@ def get_texture_prompt_for_profile(obj, profile):
     name = obj.name.lower()
     style = profile.get("art_style", "realistic_pbr")
     
+    # CRITICAL: Anti-text/anti-collage suffix
+    TEXTURE_RULES = "SINGLE seamless texture only. NO text, NO labels, NO watermarks, NO logos, NO words, NO letters, NO collage, NO multiple images, NO borders, NO frames. Fill entire image with texture pattern."
+    
     # Style-specific prefixes
     style_map = {
         "realistic_pbr": "Seamless tileable PBR texture, photorealistic",
@@ -303,11 +306,11 @@ def get_texture_prompt_for_profile(obj, profile):
     try:
         desc = bpy.context.scene.forge_project_desc
         if desc:
-            return f"{base}, {material}, for project: {desc}"
+            return f"{base}, {material}, for project: {desc}. {TEXTURE_RULES}"
     except:
         pass
     
-    return f"{base}, {material}"
+    return f"{base}, {material}. {TEXTURE_RULES}"
 
 
 # =============================================================================
@@ -509,9 +512,12 @@ def generate_texture_set(base_prompt, profile, obj_name="texture"):
     size = profile.get('resolution', '2K')
     texture_set = {}
     
+    # Anti-text/collage rules
+    RULES = "NO text, NO labels, NO watermarks, NO collage, NO borders. SINGLE image only."
+    
     # Always generate base color
     set_status("🎨 1/? BaseColor", obj_name)
-    base_prompt_full = f"{base_prompt}, albedo color map, no shadows, even lighting"
+    base_prompt_full = f"{base_prompt}, albedo color map, no shadows, even lighting. {RULES}"
     path, _ = generate_texture(base_prompt_full, size)
     if path:
         texture_set['base_color'] = path
@@ -521,7 +527,7 @@ def generate_texture_set(base_prompt, profile, obj_name="texture"):
     # Generate roughness if enabled
     if 'roughness' in maps and not _stop_requested:
         set_status("🎨 2/? Roughness", obj_name)
-        rough_prompt = f"Roughness/smoothness map for {base_prompt}, grayscale, white=rough black=smooth, no color"
+        rough_prompt = f"Roughness map, grayscale, white=rough black=smooth, for {base_prompt}. {RULES}"
         try:
             rough_path, _ = generate_texture(rough_prompt, size)
             if rough_path:
@@ -532,7 +538,7 @@ def generate_texture_set(base_prompt, profile, obj_name="texture"):
     # Generate normal if enabled
     if 'normal' in maps and not _stop_requested:
         set_status("🎨 3/? Normal", obj_name)
-        normal_prompt = f"Normal map for {base_prompt}, purple-blue tangent space normal map, surface detail bumps"
+        normal_prompt = f"Normal map, purple-blue tangent space, surface bumps, for {base_prompt}. {RULES}"
         try:
             normal_path, _ = generate_texture(normal_prompt, size)
             if normal_path:
@@ -543,7 +549,7 @@ def generate_texture_set(base_prompt, profile, obj_name="texture"):
     # Generate AO if enabled
     if 'ao' in maps and not _stop_requested:
         set_status("🎨 4/? AO", obj_name)
-        ao_prompt = f"Ambient occlusion map for {base_prompt}, grayscale, dark in crevices white on exposed surfaces"
+        ao_prompt = f"Ambient occlusion map, grayscale, dark crevices white exposed, for {base_prompt}. {RULES}"
         try:
             ao_path, _ = generate_texture(ao_prompt, size)
             if ao_path:
