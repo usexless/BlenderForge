@@ -528,11 +528,11 @@ def test_connection():
 
 
 # =============================================================================
-# UI - Main Panel
+# UI - Main Panel (Code AI)
 # =============================================================================
 
 class FORGE_PT_main(bpy.types.Panel):
-    bl_label = "BlenderForge AI"
+    bl_label = "🔧 Code AI"
     bl_idname = "FORGE_PT_main"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -542,70 +542,102 @@ class FORGE_PT_main(bpy.types.Panel):
         layout = self.layout
         scene = context.scene
         
-        # Status bar
-        box = layout.box()
-        row = box.row(align=True)
+        # ─── Status Bar ───
+        row = layout.row(align=True)
         row.label(text=_status)
         row.operator("forge.test", text="", icon='FILE_REFRESH')
         row.operator("forge.prefs", text="", icon='PREFERENCES')
         
         if _last_activity:
-            box.label(text=f"→ {_last_activity}", icon='INFO')
+            layout.label(text=f"→ {_last_activity}", icon='INFO')
         
+        # Loading indicator
         if scene.forge_loading:
             row = layout.row()
             row.alert = True
             row.label(text="Working...", icon='TIME')
             row.operator("forge.stop", text="Stop", icon='CANCEL')
+            layout.separator()
         
-        layout.separator()
+        # ─── Task Input ───
+        box = layout.box()
+        box.label(text="Task:", icon='CONSOLE')
+        box.prop(scene, "forge_message", text="")
         
-        # Project description
-        layout.prop(scene, "forge_project_desc", text="", icon='FILE_TEXT')
-        
-        # Input
-        layout.prop(scene, "forge_message", text="")
-        
-        # Action buttons
-        row = layout.row(align=True)
-        row.scale_y = 1.4
+        row = box.row(align=True)
+        row.scale_y = 1.3
         row.enabled = not scene.forge_loading
         row.operator("forge.send", text="Send", icon='EXPORT')
         row.operator("forge.clear", text="", icon='TRASH')
         
-        # Auto mode toggle
+        # Auto mode
         p = bpy.context.preferences.addons.get(__name__)
         if p:
-            layout.prop(p.preferences, "auto_execute", text="🤖 Autonomous")
+            box.prop(p.preferences, "auto_execute", text="🤖 Auto-Execute")
         
-        layout.separator()
-        
-        # History navigation
+        # ─── History ───
         history = get_response_history(scene)
         if history:
             row = layout.row(align=True)
             row.operator("forge.history_prev", text="", icon='TRIA_LEFT')
-            row.label(text=f"{_history_index + 1}/{len(history)}")
+            row.label(text=f"Step {_history_index + 1}/{len(history)}")
             row.operator("forge.history_next", text="", icon='TRIA_RIGHT')
         
-        # Error
+        # ─── Error ───
         if scene.forge_error:
             box = layout.box()
             box.alert = True
-            box.label(text=scene.forge_error[:60])
+            box.label(text=scene.forge_error[:60], icon='ERROR')
         
-        # Response
+        # ─── Response ───
         if scene.forge_response:
             box = layout.box()
+            box.label(text="Response:", icon='TEXT')
             wrap_text(context, scene.forge_response, box)
             
             if scene.forge_code:
                 row = layout.row(align=True)
-                row.operator("forge.run", text="Run", icon='PLAY')
-                row.operator("forge.copy", text="Copy", icon='COPYDOWN')
+                row.operator("forge.run", text="Run Code", icon='PLAY')
+                row.operator("forge.copy", text="", icon='COPYDOWN')
                 
                 if scene.forge_result:
                     layout.label(text=scene.forge_result)
+
+
+# =============================================================================
+# UI - Project Panel (Context)
+# =============================================================================
+
+class FORGE_PT_project(bpy.types.Panel):
+    bl_label = "📁 Project"
+    bl_idname = "FORGE_PT_project"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'Forge'
+
+    def draw(self, context):
+        layout = self.layout
+        scene = context.scene
+        
+        # ─── Project Description ───
+        box = layout.box()
+        box.label(text="Description (shared with AI):", icon='FILE_TEXT')
+        box.prop(scene, "forge_project_desc", text="")
+        
+        layout.separator()
+        
+        # ─── Action Log ───
+        box = layout.box()
+        row = box.row()
+        row.label(text="Recent Actions:", icon='TEXT')
+        row.operator("forge.clear_log", text="", icon='TRASH')
+        
+        log = get_project_log(scene)
+        if log:
+            for entry in log[-8:]:
+                box.label(text=entry[:45])
+        else:
+            box.label(text="No actions yet")
 
 
 # =============================================================================
@@ -623,66 +655,45 @@ class FORGE_PT_texture(bpy.types.Panel):
         layout = self.layout
         scene = context.scene
         
-        # Scene objects
+        # ─── Manual Generation ───
         box = layout.box()
-        box.label(text="Objects:", icon='OUTLINER')
-        mesh_objs = [o for o in bpy.data.objects if o.type == 'MESH']
-        for obj in mesh_objs[:6]:
-            has_mat = "🎨" if obj.data.materials else "⬜"
-            box.label(text=f"{has_mat} {obj.name}")
-        
-        layout.separator()
-        
-        # Texture prompt
-        layout.prop(scene, "forge_texture_prompt", text="", icon='TEXTURE')
+        box.label(text="Generate Texture:", icon='IMAGE_DATA')
+        box.prop(scene, "forge_texture_prompt", text="")
         
         p = bpy.context.preferences.addons.get(__name__)
         if p:
-            layout.prop(p.preferences, "texture_size", text="Size")
+            box.prop(p.preferences, "texture_size", text="Size")
         
-        # Action buttons
-        row = layout.row(align=True)
-        row.scale_y = 1.3
+        row = box.row()
+        row.scale_y = 1.2
         row.enabled = not scene.forge_loading
-        row.operator("forge.gen_texture", text="Generate", icon='IMAGE_DATA')
+        row.operator("forge.gen_texture", text="Generate", icon='RENDER_STILL')
         
-        col = layout.column(align=True)
+        if _texture_path:
+            row.operator("forge.apply_texture", text="Apply", icon='IMPORT')
+        
+        # ─── Auto Texture ───
+        box = layout.box()
+        box.label(text="Auto-Texture:", icon='BRUSH_DATA')
+        
+        col = box.column(align=True)
         col.enabled = not scene.forge_loading
-        col.operator("forge.auto_texture", text="🤖 Auto Selected", icon='BRUSH_DATA')
-        col.operator("forge.auto_texture_all", text="🤖 Auto ALL", icon='RENDERLAYERS')
+        col.operator("forge.auto_texture", text="Selected Object", icon='OBJECT_DATA')
+        col.operator("forge.auto_texture_all", text="All Objects", icon='OUTLINER')
         
+        # ─── Result ───
         if scene.forge_texture_result:
-            layout.separator()
             layout.label(text=scene.forge_texture_result)
-            if _texture_path:
-                layout.operator("forge.apply_texture", text="Apply", icon='IMPORT')
-
-
-# =============================================================================
-# UI - Project Panel
-# =============================================================================
-
-class FORGE_PT_project(bpy.types.Panel):
-    bl_label = "📋 Project Log"
-    bl_idname = "FORGE_PT_project"
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = 'Forge'
-    bl_options = {'DEFAULT_CLOSED'}
-
-    def draw(self, context):
-        layout = self.layout
-        scene = context.scene
         
-        log = get_project_log(scene)
-        if log:
+        # ─── Scene Objects ───
+        layout.separator()
+        mesh_objs = [o for o in bpy.data.objects if o.type == 'MESH']
+        if mesh_objs:
             box = layout.box()
-            for entry in log[-10:]:
-                box.label(text=entry[:50])
-        else:
-            layout.label(text="No actions yet")
-        
-        layout.operator("forge.clear_log", text="Clear Log", icon='TRASH')
+            box.label(text=f"Meshes ({len(mesh_objs)}):", icon='OUTLINER')
+            for obj in mesh_objs[:5]:
+                icon = 'CHECKMARK' if obj.data.materials else 'CHECKBOX_DEHLT'
+                box.label(text=obj.name, icon=icon)
 
 
 # =============================================================================
