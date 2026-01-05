@@ -596,6 +596,38 @@ def apply_texture_set_to_object(obj, texture_set, profile=None):
     return True
 
 
+def apply_smart_uv(obj):
+    """Auto-unwrap UVs based on object type."""
+    try:
+        if obj.type != 'MESH': return
+        
+        # Geometry analysis
+        bbox = obj.dimensions
+        is_flat = min(bbox) < max(bbox) * 0.1
+        is_surface = any(x in obj.name.lower() for x in ['wall', 'floor', 'ground', 'terrain', 'ceiling'])
+        
+        # Select active object for operations
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.select_all(action='SELECT')
+        
+        if is_surface or (is_flat and not 'prop' in obj.name.lower()):
+            # Cube projection for architectural/flat surfaces
+            bpy.ops.uv.cube_project(cube_size=1.0, correct_aspect=True)
+            log_action(f"[UV] Cube Projection → {obj.name}")
+        else:
+            # Smart project for complex shapes
+            bpy.ops.uv.smart_project(angle_limit=66.0, island_margin=0.02)
+            log_action(f"[UV] Smart Project → {obj.name}")
+            
+        bpy.ops.object.mode_set(mode='OBJECT')
+        return True
+    except Exception as e:
+        log_action(f"[UV] Failed: {str(e)}")
+        bpy.ops.object.mode_set(mode='OBJECT')
+        return False
+
+
 # =============================================================================
 # Shader Graph Factory (profile-based)
 # =============================================================================
@@ -1462,6 +1494,12 @@ class FORGE_OT_auto_texture(bpy.types.Operator):
         profile = get_project_profile(scene)
         prompt = get_texture_prompt_for_profile(obj, profile)
         use_hq = is_hq_mode()
+        
+        # Apply Smart UVs first
+        try:
+            apply_smart_uv(obj)
+        except:
+            pass
         
         def gen():
             try:
