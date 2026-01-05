@@ -14,9 +14,9 @@ bl_info = {
     "name": "BlenderForge",
     "blender": (4, 0),
     "category": "Object",
-    "version": (4, 0, 0),
+    "version": (5, 0, 0),
     "author": "usexless",
-    "description": "Autonomous AI assistant with texture generation for Unity-ready 3D assets",
+    "description": "AI assistant with profile-based texture generation for Unity-ready 3D assets",
 }
 
 # =============================================================================
@@ -165,6 +165,138 @@ def add_to_history(scene, response, code):
     history.append({"response": response, "code": code})
     set_response_history(scene, history)
     _history_index = len(history) - 1
+
+
+# =============================================================================
+# Project Profile (style-based texture pipeline)
+# =============================================================================
+
+DEFAULT_PROFILE = {
+    "art_style": "realistic_pbr",
+    "platform": "pc",
+    "shading": "pbr",
+    "tiling": True,
+    "resolution": "2K",
+    "maps": ["base_color", "roughness", "normal"]
+}
+
+
+def get_project_profile(scene):
+    """Get project profile from scene."""
+    try:
+        profile_str = scene.forge_project_profile
+        if profile_str:
+            return json.loads(profile_str)
+    except:
+        pass
+    return DEFAULT_PROFILE.copy()
+
+
+def set_project_profile(scene, profile):
+    """Save project profile to scene."""
+    scene.forge_project_profile = json.dumps(profile)
+
+
+def infer_profile_from_description(description):
+    """Use Gemini to parse project description into structured profile."""
+    if not description or not get_key():
+        return DEFAULT_PROFILE.copy()
+    
+    prompt = f'''Analyze this project description and return ONLY a JSON object (no markdown):
+"{description}"
+
+JSON format:
+{{"art_style": "realistic_pbr|stylized|toon|lowpoly|retro|handpainted",
+"platform": "mobile|pc|console",
+"shading": "pbr|toon|unlit",
+"tiling": true|false,
+"resolution": "1K|2K|4K",
+"maps": ["base_color", "roughness", "normal", "ao", "metallic"]}}
+
+Return ONLY valid JSON, no explanation.'''
+
+    try:
+        model = get_model()
+        version = "v1alpha" if "preview" in model else "v1beta"
+        url = f"https://generativelanguage.googleapis.com/{version}/models/{model}:generateContent?key={get_key()}"
+        
+        payload = {
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": 0.1, "maxOutputTokens": 500}
+        }
+        
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
+        
+        with urllib.request.urlopen(req, context=ssl.create_default_context(), timeout=30) as resp:
+            result = json.loads(resp.read().decode('utf-8'))
+            
+            if 'candidates' in result and result['candidates']:
+                text = result['candidates'][0].get('content', {}).get('parts', [{}])[0].get('text', '')
+                # Extract JSON from response
+                text = text.strip()
+                if text.startswith('```'):
+                    text = re.sub(r'^```\w*\n?', '', text)
+                    text = re.sub(r'\n?```$', '', text)
+                
+                profile = json.loads(text)
+                # Validate and merge with defaults
+                validated = DEFAULT_PROFILE.copy()
+                for key in DEFAULT_PROFILE:
+                    if key in profile:
+                        validated[key] = profile[key]
+                return validated
+                
+    except Exception as e:
+        log_action(f"[PROFILE] Inference failed: {str(e)[:40]}")
+    
+    return DEFAULT_PROFILE.copy()
+
+
+def get_texture_prompt_for_profile(obj, profile):
+    """Generate texture prompt based on object and project profile."""
+    name = obj.name.lower()
+    style = profile.get("art_style", "realistic_pbr")
+    
+    # Style-specific prefixes
+    style_map = {
+        "realistic_pbr": "Seamless tileable PBR texture, photorealistic",
+        "stylized": "Stylized hand-painted texture, vibrant colors",
+        "toon": "Cel-shaded flat color texture, cartoon style",
+        "lowpoly": "Low-poly texture, simple colors, minimal detail",
+        "retro": "Retro pixel-art style texture, limited palette",
+        "handpainted": "Hand-painted texture, painterly brushstrokes"
+    }
+    
+    base = style_map.get(style, style_map["realistic_pbr"])
+    
+    # Material type detection
+    if any(x in name for x in ['wall', 'floor', 'ground', 'terrain', 'ceiling']):
+        material = "architectural surface"
+    elif any(x in name for x in ['wood', 'plank', 'board', 'log', 'tree']):
+        material = "wood grain"
+    elif any(x in name for x in ['metal', 'steel', 'iron', 'chrome', 'copper']):
+        material = "metal"
+    elif any(x in name for x in ['stone', 'rock', 'brick', 'concrete', 'marble']):
+        material = "stone/masonry"
+    elif any(x in name for x in ['fabric', 'cloth', 'leather', 'carpet', 'curtain']):
+        material = "fabric/textile"
+    elif any(x in name for x in ['skin', 'body', 'face', 'character', 'human']):
+        material = "character skin"
+    elif any(x in name for x in ['grass', 'leaf', 'plant', 'flower']):
+        material = "organic vegetation"
+    else:
+        material = obj.name
+    
+    # Add project description context
+    try:
+        desc = bpy.context.scene.forge_project_desc
+        if desc:
+            return f"{base}, {material}, for project: {desc}"
+    except:
+        pass
+    
+    return f"{base}, {material}"
 
 
 # =============================================================================
@@ -645,7 +777,7 @@ class FORGE_PT_main(bpy.types.Panel):
 
 
 # =============================================================================
-# UI - Project Panel (Context)
+# UI - Project Panel (Context + Profile)
 # =============================================================================
 
 class FORGE_PT_project(bpy.types.Panel):
@@ -661,23 +793,43 @@ class FORGE_PT_project(bpy.types.Panel):
         
         # ─── Project Description ───
         box = layout.box()
-        box.label(text="Description (shared with AI):", icon='FILE_TEXT')
+        box.label(text="Description:", icon='FILE_TEXT')
         box.prop(scene, "forge_project_desc", text="")
+        
+        row = box.row(align=True)
+        row.operator("forge.analyze_profile", text="Analyze", icon='VIEWZOOM')
+        row.operator("forge.reset_profile", text="", icon='LOOP_BACK')
+        
+        # ─── Profile Display ───
+        profile = get_project_profile(scene)
+        
+        box = layout.box()
+        box.label(text="Profile:", icon='SETTINGS')
+        
+        col = box.column(align=True)
+        col.label(text=f"Style: {profile.get('art_style', 'realistic_pbr')}")
+        col.label(text=f"Platform: {profile.get('platform', 'pc')}")
+        col.label(text=f"Shading: {profile.get('shading', 'pbr')}")
+        
+        # Maps enabled
+        maps = profile.get('maps', ['base_color'])
+        maps_str = ", ".join([m.replace('_', ' ').title()[:8] for m in maps])
+        col.label(text=f"Maps: {maps_str}")
         
         layout.separator()
         
         # ─── Action Log ───
         box = layout.box()
         row = box.row()
-        row.label(text="Recent Actions:", icon='TEXT')
+        row.label(text="Log:", icon='TEXT')
         row.operator("forge.clear_log", text="", icon='TRASH')
         
         log = get_project_log(scene)
         if log:
-            for entry in log[-8:]:
-                box.label(text=entry[:45])
+            for entry in log[-5:]:
+                box.label(text=entry[:40])
         else:
-            box.label(text="No actions yet")
+            box.label(text="No actions")
 
 
 # =============================================================================
@@ -886,6 +1038,60 @@ class FORGE_OT_clear(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class FORGE_OT_analyze_profile(bpy.types.Operator):
+    bl_idname = "forge.analyze_profile"
+    bl_label = "Analyze Profile"
+    bl_description = "Infer project profile from description using AI"
+    
+    def execute(self, context):
+        scene = context.scene
+        desc = scene.forge_project_desc.strip()
+        
+        if not desc:
+            self.report({'WARNING'}, "Enter a project description first")
+            return {'CANCELLED'}
+        
+        if not get_key():
+            bpy.ops.forge.prefs()
+            return {'CANCELLED'}
+        
+        scene.forge_loading = True
+        set_status("🔍 Analyzing...", "Inferring profile")
+        
+        def analyze():
+            try:
+                profile = infer_profile_from_description(desc)
+                def done():
+                    set_project_profile(scene, profile)
+                    scene.forge_loading = False
+                    set_status("✅ Profile set", profile.get('art_style', ''))
+                    log_action(f"[PROFILE] {profile.get('art_style')} / {profile.get('shading')}")
+                    for a in bpy.context.screen.areas:
+                        if a.type == 'VIEW_3D': a.tag_redraw()
+                    return None
+                bpy.app.timers.register(done, first_interval=0.1)
+            except Exception as e:
+                def err():
+                    scene.forge_loading = False
+                    set_status("❌ Profile failed", str(e)[:30])
+                    return None
+                bpy.app.timers.register(err, first_interval=0.1)
+        
+        threading.Thread(target=analyze, daemon=True).start()
+        return {'FINISHED'}
+
+
+class FORGE_OT_reset_profile(bpy.types.Operator):
+    bl_idname = "forge.reset_profile"
+    bl_label = "Reset Profile"
+    bl_description = "Reset to default profile"
+    
+    def execute(self, context):
+        set_project_profile(context.scene, DEFAULT_PROFILE.copy())
+        set_status("⚪ Profile reset", "")
+        return {'FINISHED'}
+
+
 class FORGE_OT_clear_log(bpy.types.Operator):
     bl_idname = "forge.clear_log"
     bl_label = "Clear Log"
@@ -1000,8 +1206,11 @@ class FORGE_OT_auto_texture(bpy.types.Operator):
         
         scene = context.scene
         scene.forge_loading = True
-        prompt = generate_auto_texture_prompt(obj)
-        size = get_texture_size()
+        
+        # Use profile-based prompt
+        profile = get_project_profile(scene)
+        prompt = get_texture_prompt_for_profile(obj, profile)
+        size = profile.get('resolution', get_texture_size())
         
         def gen():
             try:
@@ -1039,7 +1248,10 @@ class FORGE_OT_auto_texture_all(bpy.types.Operator):
         
         scene = context.scene
         scene.forge_loading = True
-        size = get_texture_size()
+        
+        # Use profile-based settings
+        profile = get_project_profile(scene)
+        size = profile.get('resolution', get_texture_size())
         
         def gen_all():
             done_count = [0]
@@ -1047,7 +1259,7 @@ class FORGE_OT_auto_texture_all(bpy.types.Operator):
                 if _stop_requested: break
                 set_status(f"🎨 {i+1}/{len(mesh_objs)}", obj.name)
                 try:
-                    prompt = generate_auto_texture_prompt(obj)
+                    prompt = get_texture_prompt_for_profile(obj, profile)
                     path, _ = generate_texture(prompt, size)
                     if path:
                         def apply_tex(o=obj, p=path):
@@ -1086,6 +1298,8 @@ classes = (
     FORGE_OT_run,
     FORGE_OT_copy,
     FORGE_OT_clear,
+    FORGE_OT_analyze_profile,
+    FORGE_OT_reset_profile,
     FORGE_OT_clear_log,
     FORGE_OT_history_prev,
     FORGE_OT_history_next,
@@ -1120,6 +1334,10 @@ def register():
         name="History",
         description="Response history (JSON)"
     )
+    bpy.types.Scene.forge_project_profile = bpy.props.StringProperty(
+        name="Profile",
+        description="Project profile (JSON)"
+    )
 
 
 def unregister():
@@ -1128,7 +1346,8 @@ def unregister():
     
     for p in ['forge_message', 'forge_response', 'forge_error', 'forge_code',
               'forge_result', 'forge_loading', 'forge_texture_prompt', 'forge_texture_result',
-              'forge_project_desc', 'forge_project_log', 'forge_response_history']:
+              'forge_project_desc', 'forge_project_log', 'forge_response_history',
+              'forge_project_profile']:
         if hasattr(bpy.types.Scene, p):
             delattr(bpy.types.Scene, p)
 
