@@ -5,7 +5,7 @@
 
 ![Version](https://img.shields.io/badge/version-7.1.0-blue?style=for-the-badge)
 ![Blender](https://img.shields.io/badge/blender-4.0%2B-orange?style=for-the-badge&logo=blender)
-![Powered By](https://img.shields.io/badge/AI-Gemini%202.0-purple?style=for-the-badge&logo=google-gemini)
+![Powered By](https://img.shields.io/badge/AI-Gemini%203.0-purple?style=for-the-badge&logo=google-gemini)
 ![Python](https://img.shields.io/badge/python-3.11-yellow?style=for-the-badge&logo=python)
 
 ---
@@ -28,11 +28,34 @@ BlenderForge turns natural language into production-ready 3D assets. It's not ju
 
 ---
 
-## �️ Installation
+## 🛠️ Installation
 
-1.  **Get API Key**: [Google AI Studio](https://aistudio.google.com/) (Free tier available)
-2.  **Install**: `Edit` → `Preferences` → `Add-ons` → `Install...` → Select `blenderforge.py`
-3.  **Activate**: Check the box and paste your API Key.
+1.  **Get API Key**: Visit [Google AI Studio](https://aistudio.google.com/) (it's free!).
+2.  **Download**: Save `blenderforge.py` to your computer.
+3.  **Install in Blender**:
+    *   Go to `Edit` → `Preferences` → `Add-ons`.
+    *   Click **Install...** and select the file.
+    *   Search for "BlenderForge" and enable the checkbox.
+    *   Paste your API Key in the preferences panel.
+
+---
+
+## 🖥️ Interface Guide
+
+### 1. 🔧 Code AI Panel
+*   **Chat**: Type requests like "Create a spiral staircase" or "Arrange books randomly".
+*   **Auto-Run**: If enabled, code executes immediately. `Ctrl+Z` to undo mostly works!
+*   **History**: Use `<` `>` buttons to browse previous code generations.
+
+### 2. 📁 Project Panel
+*   **Description**: Enter your project setting (e.g., "Post-apocalyptic wasteland").
+*   **Analyze**: Click this to let AI infer the Art Style (e.g., "Realistic", "Dirty").
+*   **Profile**: Shows the active settings for Textures and Shaders.
+
+### 3. 🎨 Textures Panel
+*   **Generate**: Create textures for the selected object.
+*   **HQ Mode**: Check this for Normals/Roughness/AO (takes longer, looks better).
+*   **Material Library**: reuse previously generated materials instantly.
 
 ---
 
