@@ -1,49 +1,49 @@
 # BlenderForge
 
-**AI assistant with profile-based texture generation for Unity-ready 3D assets**
+**AI with profile-based shaders for Unity-ready 3D assets**
 
-![Version](https://img.shields.io/badge/version-5.0.0-blue)
+![Version](https://img.shields.io/badge/version-6.0.0-blue)
 ![Blender](https://img.shields.io/badge/blender-4.0+-orange)
 
 ## ✨ Features
 
 | Feature | Description |
 |---------|-------------|
-| 🎯 **Profile System** | Auto-infers art style from project description |
-| 🎨 **Style-Aware Textures** | PBR, Stylized, Toon, Lowpoly, Retro |
-| 🤖 **Autonomous Mode** | Auto-executes generated code |
-| 📁 **Project Context** | Stored per .blend file |
+| 🎯 **Profile System** | Auto-infers style from description |
+| 🎨 **Shader Factory** | PBR, Toon, Unlit materials |
+| 🤖 **Autonomous Mode** | Auto-executes code |
+| 📁 **Project Context** | Per .blend file |
 
 ## 📦 Install
 
 1. Get API Key: [aistudio.google.com](https://aistudio.google.com/)
 2. **Edit → Preferences → Add-ons → Install** → `blenderforge.py`
-3. Enable, click ⚙️, paste API key
+3. Enable, paste API key
 
 ## 🚀 Usage
 
-### 1. Set Project Description
-Enter your project style (e.g. "PS1-style horror game" or "stylized mobile RPG")
+### 1. Set Description
+Examples:
+- "PS1-style horror game" → lowpoly/retro
+- "Stylized mobile RPG" → toon/unlit
+- "AAA realistic shooter" → pbr
 
-### 2. Analyze Profile
-Click **Analyze** → AI extracts:
-- Art Style (PBR/Stylized/Toon/Lowpoly/Retro)
-- Platform (Mobile/PC/Console)
-- Shading (PBR/Toon/Unlit)
-- Texture Maps (BaseColor, Roughness, Normal, AO)
+### 2. Analyze
+Click **Analyze** → Profile extracts style/shading
 
-### 3. Generate Textures
-Auto-texture uses profile for style-consistent results
+### 3. Auto-Texture
+Generates texture + applies matching shader:
+- **PBR**: Principled + Roughness + Normal
+- **Toon**: Diffuse → ShaderToRGB → ColorRamp
+- **Unlit**: Emission (mobile/UI)
 
-## 🎮 Profiles
+## 🎭 Shader Types
 
-| Style | Prompt Behavior |
-|-------|-----------------|
-| `realistic_pbr` | Seamless tileable PBR, photorealistic |
-| `stylized` | Hand-painted, vibrant colors |
-| `toon` | Cel-shaded, flat colors |
-| `lowpoly` | Simple colors, minimal detail |
-| `retro` | Pixel-art, limited palette |
+| Profile Shading | Blender Shader |
+|-----------------|----------------|
+| `pbr` | Principled BSDF |
+| `toon` | Cel-shading with ColorRamp |
+| `unlit` | Emission only |
 
 ---
 *Powered by Google Gemini 3*

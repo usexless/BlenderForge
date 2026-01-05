@@ -14,9 +14,9 @@ bl_info = {
     "name": "BlenderForge",
     "blender": (4, 0),
     "category": "Object",
-    "version": (5, 0, 0),
+    "version": (6, 0, 0),
     "author": "usexless",
-    "description": "AI assistant with profile-based texture generation for Unity-ready 3D assets",
+    "description": "AI with profile-based shaders (PBR/Toon/Unlit) for Unity-ready assets",
 }
 
 # =============================================================================
@@ -492,7 +492,12 @@ def generate_texture(prompt, size="2K"):
         raise Exception(msg[:100])
 
 
-def apply_texture_to_object(obj, image_path):
+# =============================================================================
+# Shader Graph Factory (profile-based)
+# =============================================================================
+
+def create_pbr_material(obj, image_path, roughness_path=None, normal_path=None):
+    """Create PBR material with optional maps."""
     mat_name = f"Forge_{obj.name}"
     mat = bpy.data.materials.get(mat_name) or bpy.data.materials.new(name=mat_name)
     mat.use_nodes = True
@@ -500,23 +505,151 @@ def apply_texture_to_object(obj, image_path):
     links = mat.node_tree.links
     nodes.clear()
     
+    # Output
     output = nodes.new('ShaderNodeOutputMaterial')
-    output.location = (300, 0)
-    bsdf = nodes.new('ShaderNodeBsdfPrincipled')
-    bsdf.location = (0, 0)
-    tex_node = nodes.new('ShaderNodeTexImage')
-    tex_node.location = (-300, 0)
-    tex_node.image = bpy.data.images.load(image_path, check_existing=True)
+    output.location = (400, 0)
     
-    links.new(tex_node.outputs['Color'], bsdf.inputs['Base Color'])
+    # Principled BSDF
+    bsdf = nodes.new('ShaderNodeBsdfPrincipled')
+    bsdf.location = (100, 0)
     links.new(bsdf.outputs['BSDF'], output.inputs['Surface'])
     
+    # Base Color
+    tex_base = nodes.new('ShaderNodeTexImage')
+    tex_base.location = (-300, 100)
+    tex_base.image = bpy.data.images.load(image_path, check_existing=True)
+    links.new(tex_base.outputs['Color'], bsdf.inputs['Base Color'])
+    
+    # Roughness (if provided or estimate from base)
+    if roughness_path:
+        tex_rough = nodes.new('ShaderNodeTexImage')
+        tex_rough.location = (-300, -150)
+        tex_rough.image = bpy.data.images.load(roughness_path, check_existing=True)
+        tex_rough.image.colorspace_settings.name = 'Non-Color'
+        links.new(tex_rough.outputs['Color'], bsdf.inputs['Roughness'])
+    else:
+        # Derive roughness from base color (simple inversion of saturation)
+        bsdf.inputs['Roughness'].default_value = 0.5
+    
+    # Normal (if provided)
+    if normal_path:
+        tex_normal = nodes.new('ShaderNodeTexImage')
+        tex_normal.location = (-300, -400)
+        tex_normal.image = bpy.data.images.load(normal_path, check_existing=True)
+        tex_normal.image.colorspace_settings.name = 'Non-Color'
+        
+        normal_map = nodes.new('ShaderNodeNormalMap')
+        normal_map.location = (-100, -400)
+        links.new(tex_normal.outputs['Color'], normal_map.inputs['Color'])
+        links.new(normal_map.outputs['Normal'], bsdf.inputs['Normal'])
+    
+    return mat
+
+
+def create_toon_material(obj, image_path):
+    """Create cel-shaded toon material."""
+    mat_name = f"Forge_{obj.name}"
+    mat = bpy.data.materials.get(mat_name) or bpy.data.materials.new(name=mat_name)
+    mat.use_nodes = True
+    nodes = mat.node_tree.nodes
+    links = mat.node_tree.links
+    nodes.clear()
+    
+    # Output
+    output = nodes.new('ShaderNodeOutputMaterial')
+    output.location = (600, 0)
+    
+    # Mix for rim light effect
+    mix = nodes.new('ShaderNodeMixShader')
+    mix.location = (400, 0)
+    links.new(mix.outputs['Shader'], output.inputs['Surface'])
+    
+    # Diffuse BSDF
+    diffuse = nodes.new('ShaderNodeBsdfDiffuse')
+    diffuse.location = (100, 100)
+    
+    # Texture
+    tex = nodes.new('ShaderNodeTexImage')
+    tex.location = (-200, 100)
+    tex.image = bpy.data.images.load(image_path, check_existing=True)
+    links.new(tex.outputs['Color'], diffuse.inputs['Color'])
+    
+    # Shader to RGB for cel-shading
+    shader_rgb = nodes.new('ShaderNodeShaderToRGB')
+    shader_rgb.location = (250, 100)
+    links.new(diffuse.outputs['BSDF'], shader_rgb.inputs['Shader'])
+    
+    # Color Ramp for hard edges
+    ramp = nodes.new('ShaderNodeValToRGB')
+    ramp.location = (400, 100)
+    ramp.color_ramp.interpolation = 'CONSTANT'
+    ramp.color_ramp.elements[0].position = 0.3
+    links.new(shader_rgb.outputs['Color'], ramp.inputs['Fac'])
+    
+    # Final emission for flat look
+    emission = nodes.new('ShaderNodeEmission')
+    emission.location = (250, -100)
+    links.new(ramp.outputs['Color'], emission.inputs['Color'])
+    links.new(emission.outputs['Emission'], mix.inputs[2])
+    links.new(diffuse.outputs['BSDF'], mix.inputs[1])
+    mix.inputs['Fac'].default_value = 0.8
+    
+    return mat
+
+
+def create_unlit_material(obj, image_path):
+    """Create unlit/emission material for mobile/UI."""
+    mat_name = f"Forge_{obj.name}"
+    mat = bpy.data.materials.get(mat_name) or bpy.data.materials.new(name=mat_name)
+    mat.use_nodes = True
+    nodes = mat.node_tree.nodes
+    links = mat.node_tree.links
+    nodes.clear()
+    
+    # Output
+    output = nodes.new('ShaderNodeOutputMaterial')
+    output.location = (300, 0)
+    
+    # Emission
+    emission = nodes.new('ShaderNodeEmission')
+    emission.location = (100, 0)
+    emission.inputs['Strength'].default_value = 1.0
+    links.new(emission.outputs['Emission'], output.inputs['Surface'])
+    
+    # Texture
+    tex = nodes.new('ShaderNodeTexImage')
+    tex.location = (-200, 0)
+    tex.image = bpy.data.images.load(image_path, check_existing=True)
+    links.new(tex.outputs['Color'], emission.inputs['Color'])
+    
+    return mat
+
+
+def apply_texture_to_object(obj, image_path, profile=None):
+    """Apply texture using profile-based shader selection."""
+    if profile is None:
+        try:
+            profile = get_project_profile(bpy.context.scene)
+        except:
+            profile = DEFAULT_PROFILE
+    
+    shading = profile.get('shading', 'pbr')
+    
+    # Select shader based on profile
+    if shading == 'toon':
+        mat = create_toon_material(obj, image_path)
+    elif shading == 'unlit':
+        mat = create_unlit_material(obj, image_path)
+    else:  # Default PBR
+        mat = create_pbr_material(obj, image_path)
+    
+    # Apply material
     if obj.data.materials:
         obj.data.materials[0] = mat
     else:
         obj.data.materials.append(mat)
     
-    log_action(f"[TEXTURE] Applied to {obj.name}")
+    log_action(f"[SHADER] {shading.upper()} → {obj.name}")
     return True
 
 
