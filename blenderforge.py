@@ -14,9 +14,9 @@ bl_info = {
     "name": "BlenderForge",
     "blender": (4, 0),
     "category": "Object",
-    "version": (7, 0, 0),
+    "version": (7, 1, 0),
     "author": "usexless",
-    "description": "AI with multi-map textures and PBR/Toon/Unlit shaders for Unity",
+    "description": "AI with modular objects, multi-map textures, PBR/Toon/Unlit for Unity",
 }
 
 # =============================================================================
@@ -836,11 +836,21 @@ RULES
 9) Edit bones in Edit Mode only
 10) Build on previous actions from project context
 
-OBJECT ORGANIZATION (CRITICAL)
-11) Always name objects descriptively: "Character_Body", "Sword_Blade", "Tree_Trunk"
-12) Group related objects using Collections or parent Empty
-13) Use naming pattern: [Category]_[Part] (e.g. "Vehicle_Wheel.L")
-14) After creating objects, print summary: names, hierarchy, vertex counts'''
+MODULAR OBJECT CREATION (CRITICAL FOR TEXTURES)
+11) ALWAYS split complex objects into separate mesh parts by material type
+    - Character: Head, Body, Arms.L/R, Legs.L/R, Hair, Clothes_Shirt, Clothes_Pants, etc.
+    - Weapon: Blade, Handle, Guard, Pommel
+    - Vehicle: Body, Wheel.L/R, Window, Headlight.L/R
+    - Building: Wall, Roof, Door, Window, Foundation
+12) Each part = 1 mesh object = 1 material slot = 1 texture
+13) Group parts in Collection: "Character_Knight", "Weapon_Sword"
+14) Parent parts to Empty for transform control
+15) Naming: [Category]_[Part] e.g. "Knight_Body", "Sword_Blade"
+
+OBJECT ORGANIZATION
+16) Print summary after creation: object names, hierarchy, vertex counts
+17) Keep parts separate but aligned (no boolean unions for different materials)
+18) Use consistent scale across all parts'''
 
 
 # =============================================================================
