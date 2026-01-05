@@ -1409,6 +1409,38 @@ class FORGE_OT_history_next(bpy.types.Operator):
             context.scene.forge_code = entry["code"]
         return {'FINISHED'}
 
+        return {'FINISHED'}
+
+
+class FORGE_OT_apply_cached_material(bpy.types.Operator):
+    bl_idname = "forge.apply_cached"
+    bl_label = "Apply Material"
+    bl_description = "Apply cached material to selected object"
+    
+    mat_name: bpy.props.StringProperty()
+    
+    def execute(self, context):
+        mat = bpy.data.materials.get(self.mat_name)
+        obj = context.active_object
+        
+        if not mat or not obj or obj.type != 'MESH':
+            return {'CANCELLED'}
+            
+        # Apply material
+        if obj.data.materials:
+            obj.data.materials[0] = mat
+        else:
+            obj.data.materials.append(mat)
+            
+        # Apply UVs if needed
+        try:
+            apply_smart_uv(obj)
+        except:
+            pass
+            
+        context.scene.forge_texture_result = f"✅ Applied {mat.name}"
+        return {'FINISHED'}
+
 
 # Texture operators
 class FORGE_OT_gen_texture(bpy.types.Operator):
@@ -1615,6 +1647,7 @@ classes = (
     FORGE_OT_apply_texture,
     FORGE_OT_auto_texture,
     FORGE_OT_auto_texture_all,
+    FORGE_OT_apply_cached_material,
 )
 
 
